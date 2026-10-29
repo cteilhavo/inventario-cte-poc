@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Teste de ligação — Inventário CTE</title>
+<style>
+  :root{ --bg:#F4F4F1; --surface:#fff; --ink:#1D2433; --soft:#434B5E; --faint:#5E6574;
+         --line:#E0DFD8; --navy:#1F3A93; --ok:#0B6B4F; --bad:#B3341E; --warn:#8A5A00; }
+  *{box-sizing:border-box}
+  body{margin:0; background:var(--bg); color:var(--ink); font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+  main{max-width:640px; margin:0 auto; padding:24px 16px 48px}
+  h1{font-size:22px; margin:0 0 4px}
+  p.sub{color:var(--soft); margin:0 0 18px; font-size:14px}
+  .card{background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:16px; margin-bottom:14px}
+  label{display:block; font-size:13px; color:var(--soft); margin-bottom:6px}
+  input{width:100%; padding:11px 12px; border:1px solid #C6C5BC; border-radius:10px; font:inherit; background:#F0F0EC}
+  .btns{display:grid; gap:8px; margin-top:14px}
+  button{font:inherit; font-weight:600; padding:12px 14px; border-radius:10px; border:1px solid var(--navy);
+         background:var(--navy); color:#fff; cursor:pointer; text-align:left}
+  button.alt{background:transparent; color:var(--ink); border-color:#C6C5BC}
+  button.small{font-weight:500; font-size:13px; padding:9px 12px}
+  #out{margin:0; padding:0; list-style:none}
+  #out li{padding:10px 12px; border-radius:8px; margin-bottom:8px; font-size:13.5px; background:#F0F0EC}
+  #out li.ok{background:#E4F3EC; color:var(--ok)}
+  #out li.bad{background:#FBE3DC; color:var(--bad)}
+  #out li.info{background:#EDF0FA; color:var(--navy)}
+  code{font:12.5px ui-monospace,Consolas,monospace; word-break:break-all}
+  .aviso{background:#FBF0D0; border:1px solid #E2A91F; color:var(--warn); border-radius:10px; padding:12px; font-size:13px; margin-bottom:14px}
+  .muted{color:var(--faint); font-size:12.5px}
+</style>
+</head>
+<body>
+<main>
+  <h1>Teste de ligação</h1>
+  <p class="sub">Inventário CTE · verifica se este site consegue falar com a aplicação Google Apps Script.</p>
+
+  <div class="aviso" id="aviso-file" style="display:none">
+    ⚠️ Estás a abrir o ficheiro diretamente (<code>file://</code>). O resultado não é válido —
+    tem de ser testado em <b>https</b>, no endereço do GitHub Pages.
+  </div>
+
+  <div class="card">
+    <label for="url">Endereço da aplicação (termina em <code>/exec</code>)</label>
+    <input id="url" inputmode="url" autocomplete="off" spellcheck="false"
+           placeholder="https://script.google.com/macros/s/…/exec">
+    <div class="btns">
+      <button id="b-post">1 · Testar POST (o caminho normal)</button>
+      <button id="b-get" class="alt">2 · Testar GET</button>
+      <button id="b-jsonp" class="alt">3 · Testar JSONP</button>
+      <button id="b-abrir" class="alt">4 · Abrir a aplicação (navegação)</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px">
+      <b>Resultados</b>
+      <button id="b-copiar" class="small alt" type="button">Copiar</button>
+    </div>
+    <ul id="out"><li class="info">Preenche o endereço e toca no teste 1.</li></ul>
+    <p class="muted" id="resumo"></p>
+  </div>
+
+  <p class="muted">
+    Este teste não envia dados pessoais: o servidor só responde a um <code>ping</code>.
+  </p>
+</main>
+
+<script>
+(function () {
+  var inp = document.getElementById('url');
+  var out = document.getElementById('out');
+  var resumo = document.getElementById('resumo');
+  var resultados = [];
+
+  try { inp.value = localStorage.getItem('poc-url') || ''; } catch (e) {}
+  if (location.protocol === 'file:') document.getElementById('aviso-file').style.display = 'block';
+
+  function base() {
+    var u = inp.value.trim();
+    if (!u) { registrar('Endereço', 'falhou', 'Preenche o endereço da aplicação.'); return ''; }
+    if (!/^https:\/\//i.test(u)) { registrar('Endereço', 'falhou', 'Tem de começar por https://'); return ''; }
+    try { localStorage.setItem('poc-url', u); } catch (e) {}
+    return u;
+  }
+  function comParam(u, q) { return u + (u.indexOf('?') === -1 ? '?' : '&') + q; }
+  function limpar() { out.innerHTML = ''; }
+
+  function registrar(nome, estado, detalhe) {
+    var li = document.createElement('li');
+    li.className = estado === 'ok' ? 'ok' : (estado === 'falhou' ? 'bad' : 'info');
+    var marca = estado === 'ok' ? '✅' : (estado === 'falhou' ? '❌' : 'ℹ️');
+    li.innerHTML = '<b>' + marca + ' ' + nome + '</b><br>' + detalhe;
+    out.appendChild(li);
+    resultados.push((estado === 'ok' ? 'OK   ' : estado === 'falhou' ? 'FALHA' : 'INFO ') + ' | ' + nome + ' | ' + detalhe.replace(/<[^>]+>/g, ''));
+    atualizarResumo();
+  }
+
+  function atualizarResumo() {
+    var ok = resultados.filter(function (r) { return r.indexOf('OK   ') === 0; }).length;
+    var bad = resultados.filter(function (r) { return r.indexOf('FALHA') === 0; }).length;
+    resumo.textContent = ok + ' com sucesso · ' + bad + ' com falha · ' +
+      (navigator.userAgent.indexOf('Mobile') !== -1 ? 'telemóvel' : 'computador');
+  }
+
+  /* 1. POST — text/plain evita o pedido de pré-verificação (CORS preflight) */
+  document.getElementById('b-post').onclick = function () {
+    var u = base(); if (!u) return;
+    limpar();
+    var t0 = performance.now();
+    fetch(u, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ metodo: 'ping' }),
+      credentials: 'omit',
+      redirect: 'follow'
+    }).then(function (r) {
+      return r.text().then(function (t) {
+        var ms = Math.round(performance.now() - t0);
+        var bom = r.ok && t.indexOf('"ok":true') !== -1;
+        registrar('POST', bom ? 'ok' : 'falhou',
+          'HTTP ' + r.status + ' · ' + ms + ' ms<br><code>' + esc(t.slice(0, 300)) + '</code>');
+      });
+    }).catch(function (e) {
+      registrar('POST', 'falhou', 'Sem resposta (<code>' + esc(String(e && e.message || e)) + '</code>). ' +
+        'Normalmente é bloqueio de CORS ou o endereço está errado.');
+    });
+  };
+
+  /* 2. GET simples */
+  document.getElementById('b-get').onclick = function () {
+    var u = base(); if (!u) return;
+    limpar();
+    var t0 = performance.now();
+    fetch(comParam(u, 'api=ping'), { method: 'GET', credentials: 'omit', redirect: 'follow' })
+      .then(function (r) {
+        return r.text().then(function (t) {
+          var ms = Math.round(performance.now() - t0);
+          var bom = r.ok && t.indexOf('"ok":true') !== -1;
+          registrar('GET', bom ? 'ok' : 'falhou',
+            'HTTP ' + r.status + ' · ' + ms + ' ms<br><code>' + esc(t.slice(0, 300)) + '</code>');
+        });
+      }).catch(function (e) {
+        registrar('GET', 'falhou', 'Sem resposta (<code>' + esc(String(e && e.message || e)) + '</code>).');
+      });
+  };
+
+  /* 3. JSONP — usa um <script>, que não está sujeito a CORS */
+  document.getElementById('b-jsonp').onclick = function () {
+    var u = base(); if (!u) return;
+    limpar();
+    var nome = 'pocCb_' + Date.now();
+    var feito = false;
+    var t0 = performance.now();
+    var s = document.createElement('script');
+
+    window[nome] = function (dados) {
+      feito = true;
+      var ms = Math.round(performance.now() - t0);
+      registrar('JSONP', dados && dados.ok ? 'ok' : 'falhou',
+        ms + ' ms<br><code>' + esc(JSON.stringify(dados).slice(0, 300)) + '</code>');
+      window[nome] = undefined;
+    };
+    s.onerror = function () {
+      if (feito) return;
+      feito = true;
+      registrar('JSONP', 'falhou', 'O <code>&lt;script&gt;</code> não carregou (resposta não é JavaScript válido).');
+    };
+    s.src = comParam(u, 'api=ping&callback=' + nome);
+    document.body.appendChild(s);
+    setTimeout(function () {
+      if (feito) return;
+      feito = true;
+      registrar('JSONP', 'falhou', 'Sem resposta em 10 segundos.');
+    }, 10000);
+  };
+
+  /* 4. Navegação — replica o que acontece ao ler o QR Code */
+  document.getElementById('b-abrir').onclick = function () {
+    var u = base(); if (!u) return;
+    limpar();
+    registrar('Navegação', 'info',
+      'A abrir a aplicação num separador novo. Se aparecer “não foi possível abrir o ficheiro”, ' +
+      'é o problema da conta Google — e é esse o teste que interessa.');
+    window.open(u, '_blank');
+  };
+
+  document.getElementById('b-copiar').onclick = function () {
+    var texto = 'Teste PoC — Inventário CTE\n' + location.href + '\n' +
+      navigator.userAgent + '\n\n' + resultados.join('\n');
+    var fazer = function () { alert('Resultados copiados.'); };
+    if (navigator.clipboard) navigator.clipboard.writeText(texto).then(fazer, function () { prompt('Copia:', texto); });
+    else prompt('Copia:', texto);
+  };
+
+  function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+})();
+</script>
+</body>
+</html>
